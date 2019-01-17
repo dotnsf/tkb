@@ -105,6 +105,18 @@ $(function(){
   client = new Messaging.Client("quickstart.messaging.internetofthings.ibmcloud.com", 443, clientID );
   client.onConnectionLost = onConnectionLost;
   client.connect({onSuccess: onConnect, onFailure: onConnectFailure, useSSL: true});
+
+  var wsUrl = 'ws://<%= wshost %>/ws/letter';
+  function connect(){
+    console.log( 'wsUrl = ' + wsUrl );
+    socket = new WebSocket(wsUrl);
+    socket.onmessage = function(e) {
+      alert( e.data );
+      var data = JSON.parse(e.data);
+      console.log( data );
+
+    }
+  }
 });
 
 function resized(){
@@ -145,7 +157,7 @@ function resetCanvas( no_reset_unredo ){
 
       //. 横線
       ctx.beginPath();
-      ctx.strokeStyle = "rgb( 0, 0, 0 )";
+      ctx.strokeStyle = "rgb( 150, 150, 150 )";
       ctx.lineWidth = 1;
       ctx.moveTo( 0 , h0 * i );
       if( i != 2 ){
@@ -160,7 +172,7 @@ function resetCanvas( no_reset_unredo ){
       for( var j = startj; j < endj; j ++ ){
         //. 縦線
         ctx.beginPath();
-        ctx.strokeStyle = "rgb( 0, 0, 0 )";
+        ctx.strokeStyle = "rgb( 150, 150, 150 )";
         ctx.lineWidth = 1;
         ctx.moveTo( w0 * j , h0 * ( i - 1 ) );
         ctx.lineTo( w0 * j , h0 * i );
@@ -190,7 +202,7 @@ function resetCanvas( no_reset_unredo ){
 
       //. 横線
       ctx.beginPath();
-      ctx.strokeStyle = "rgb( 0, 0, 0 )";
+      ctx.strokeStyle = "rgb( 150, 150, 150 )";
       ctx.lineWidth = 1;
       ctx.moveTo( w0 * i , 0 );
       if( i != 3 ){
@@ -205,7 +217,7 @@ function resetCanvas( no_reset_unredo ){
       for( var j = startj; j < endj; j ++ ){
         //. 縦線
         ctx.beginPath();
-        ctx.strokeStyle = "rgb( 0, 0, 0 )";
+        ctx.strokeStyle = "rgb( 150, 150, 150 )";
         ctx.lineWidth = 1;
         ctx.moveTo( w0 * i , h0 * j );
         ctx.lineTo( w0 * ( i + 1 ) , h0 * j );

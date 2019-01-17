@@ -1,0 +1,18 @@
+{
+    "name": "tkb",
+    "version": "0.0.1",
+    "scripts": {
+        "start": "node app.js"
+    },
+    "dependencies": {
+        "body-parser": "1.18.3",
+        "cfenv": "~1.0.0",
+        "ejs": "^2.6.1",
+        "express": "4.1.x",
+        "fs": "~0.0.1"
+    },
+    "repository": {},
+    "engines": {
+        "node": "6.x"
+    }
+}

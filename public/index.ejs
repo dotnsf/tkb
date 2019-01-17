@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>tkb</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<script type="text/javascript" src="//code.jquery.com/jquery-2.2.4.min.js"></script>
+<link href="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" rel="stylesheet"/>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="./mqttws31.js"></script>
+<style type="text/css">
+html, body{
+  width: 100%;
+  height: 100%;
+  padding: 0px;
+  margin: 0px;
+  text-align: center;
+  background-color: #fafafa;
+  font-size: 20px;
+  color: #333;
+}
+#mycanvas{
+  width: 100%;
+  height: 100%;
+  padding: 0px;
+  margin: 0px;
+  border: 1px solid #333;
+}
+</style>
+</head>
+<body>
+
+<canvas width="100%" height="100%" id="mycanvas">
+</canvas>
+
+<script>
+var deviceid = "dotnsfdevice";
+var devicetype = "MyDevice";
+var eventtype = null;
+var test = null;
+var client;
+var pubTopic = 'iot-2/evt/status/fmt/json';
+var phoneData = {};
+
+$(function(){
+  var canvas = document.getElementById( 'mycanvas' );
+  if( !canvas || !canvas.getContext ){
+    return false;
+  }
+  var ctx = canvas.getContext( '2d' );
+
+  var borderWidth = 1;
+
+  canvas.addEventListener( "touchmove", function( e ){
+    //. タッチが動いたら座標値を取得
+    var t = e.changedTouches[0];
+    var rect = e.target.getBoundingClientRect();
+    var x = ( isAndroid() ? t.pageX : e.pageX ) - rect.left - borderWidth;
+    var y = ( isAndroid() ? t.pageY : e.pageY ) - rect.top - borderWidth;
+  });
+  //. タッチしたら、描画OK(myDrawをtrue)
+  canvas.addEventListener( "touchstart", function( e ){
+    var t = e.changedTouches[0];
+    var rect = t.target.getBoundingClientRect();
+    var w = rect.right - rect.left;
+    var h = rect.bottom - rect.top;
+
+    //var x = t.pageX - rect.left - borderWidth;
+    //var y = t.pageY - rect.top - borderWidth;
+    var x = t.pageX - borderWidth;
+    var y = t.pageY - borderWidth;
+
+    //alert( '[x,y] = [' + x + ',' + y + '](' + w + ',' + h + ')' );
+    var key = guessKey( x, y, w, h );
+    if( key != null ){
+      publishMessage( key );
+    }
+  });
+  //. タッチを上げたら、描画禁止(myDrawをfalse)
+  canvas.addEventListener( "touchend", function( e ){
+  });
+  canvas.addEventListener( "touchcancel", function( e ){
+  });
+
+  //. リサイズ時に Canvas サイズを変更する
+  $(window).on( 'load resize', function(){
+    resized();
+  });
+
+  //. スクロール禁止
+  /*
+  $(window).on('touchmove.noScroll', function( e ){
+    e.preventDefault();
+  });
+  */
+  var movefun = function( event ){
+    event.preventDefault();
+  }
+  window.addEventListener( 'touchmove', movefun, { passive: false } );
+
+  //resetCanvas();
+
+  var clientID = "d:quickstart:" + devicetype + ":" + deviceid;
+  client = new Messaging.Client("quickstart.messaging.internetofthings.ibmcloud.com", 443, clientID );
+  client.onConnectionLost = onConnectionLost;
+  client.connect({onSuccess: onConnect, onFailure: onConnectFailure, useSSL: true});
+});
+
+function resized(){
+  var browserWidth = window.innerWidth;
+  var browserHeight = window.innerHeight;
+  var canvas = document.getElementById( 'mycanvas' );
+  if( canvas && canvas.getContext ){
+    canvas.width = browserWidth * 0.8;
+    canvas.height = browserHeight * 0.8;
+  }
+
+  resetCanvas();
+}
+
+function resetCanvas( no_reset_unredo ){
+  var canvas = document.getElementById( 'mycanvas' );
+  if( !canvas || !canvas.getContext ){
+    return false;
+  }
+  var ctx = canvas.getContext( '2d' );
+
+  var w = canvas.width;
+  var h = canvas.height;
+
+  //. 全体を白でベタ塗り
+  ctx.beginPath();
+  ctx.fillStyle = "rgb( 255, 255, 255 )";
+  ctx.fillRect( 0, 0, w, h );
+  ctx.stroke();
+
+  if( w > h ){
+    //. 横向き
+    var h0 = h / 5;
+
+    for( var i = 1; i < 5; i ++ ){
+      var n = ( i == 4 ? 15 : 14 );
+      var w0 = w / n;
+
+      //. 横線
+      ctx.beginPath();
+      ctx.strokeStyle = "rgb( 0, 0, 0 )";
+      ctx.lineWidth = 1;
+      ctx.moveTo( 0 , h0 * i );
+      if( i != 2 ){
+        ctx.lineTo( w , h0 * i );
+      }else{
+        ctx.lineTo( w - w0 , h0 * i );
+      }
+      ctx.stroke();
+
+      var startj = ( i == 4 ? 2 : 1 );
+      var endj = ( i == 4 ? n - 1 : n );
+      for( var j = startj; j < endj; j ++ ){
+        //. 縦線
+        ctx.beginPath();
+        ctx.strokeStyle = "rgb( 0, 0, 0 )";
+        ctx.lineWidth = 1;
+        ctx.moveTo( w0 * j , h0 * ( i - 1 ) );
+        ctx.lineTo( w0 * j , h0 * i );
+        ctx.stroke();
+
+        //. KEY
+        var x = w0 * ( j - 0.5 );
+        var y = h0 * ( i - 0.5 );
+        var key = guessKey( x, y, w, h );
+        ctx.strokeText( key, x, y );
+      }
+
+      if( i != 3 ){
+        var x = w0 * ( endj - 0.5 );
+        var y = h0 * ( i - 0.5 );
+        var key = guessKey( x, y, w, h );
+        ctx.strokeText( key, x, y );
+      }
+    }
+  }else{
+    //. 縦向き
+    var w0 = w / 5;
+
+    for( var i = 1; i < 5; i ++ ){
+      var n = ( i == 4 ? 15 : 14 );
+      var h0 = h / n;
+
+      //. 横線
+      ctx.beginPath();
+      ctx.strokeStyle = "rgb( 0, 0, 0 )";
+      ctx.lineWidth = 1;
+      ctx.moveTo( w0 * i , 0 );
+      if( i != 3 ){
+        ctx.lineTo( w0 * i , h );
+      }else{
+        ctx.lineTo( w0 * i , h - h0 );
+      }
+      ctx.stroke();
+
+      var startj = ( i == 1 ? 2 : 1 );
+      var endj = ( i == 1 ? n - 1 : n );
+      for( var j = startj; j < endj; j ++ ){
+        //. 縦線
+        ctx.beginPath();
+        ctx.strokeStyle = "rgb( 0, 0, 0 )";
+        ctx.lineWidth = 1;
+        ctx.moveTo( w0 * i , h0 * j );
+        ctx.lineTo( w0 * ( i + 1 ) , h0 * j );
+        ctx.stroke();
+
+        //. KEY
+        var x = w0 * ( i - 0.5 );
+        var y = h0 * ( j - 0.5 );
+        var key = guessKey( x, y, w, h );
+        ctx.strokeText( key, x, y );
+      }
+
+      if( i != 2 ){
+        var x = w0 * ( i - 0.5 );
+        var y = h0 * ( endj - 0.5 );
+        var key = guessKey( x, y, w, h );
+        ctx.strokeText( key, x, y );
+      }
+    }
+  }
+}
+
+function isAndroid(){
+  return ( navigator.userAgent.indexOf( 'Android' ) > 0 );
+}
+
+function guessKey( x, y, w, h ){
+  var key = null;
+  if( w > h ){
+    //. 横向き
+    var H = -1;
+    var h0 = h / 5;
+    if( 0 <= y && y < h0 ){
+      H = 0;
+    }else if( h0 <= y && y < h0 * 2 ){
+      H = 1;
+    }else if( h0 * 2 <= y && y < h0 * 3 ){
+      H = 2;
+    }else if( h0 * 3 <= y && y < h0 * 4 ){
+      H = 3;
+    }else{
+      H = 4;
+    }
+
+    var w0 = w / ( H == 3 ? 15 : ( H == 4 ? 1 : 14 ) );
+    if( H == 4 ){
+      key = ' ';
+    }else{
+      if( 0 <= x && x < w0 ){
+        if( H == 0 ){
+          key = '1';
+        }else if( H == 1 ){
+          key = 'TAB';
+        }else if( H == 2 ){
+          key = 'CTL';
+        }else if( H == 3 ){
+          key = 'SHIFT';
+        }
+      }else if( w0 <= x && x < w0 * 2 ){
+        if( H == 0 ){
+          key = '2';
+        }else if( H == 1 ){
+          key = 'Q';
+        }else if( H == 2 ){
+          key = 'A';
+        }else if( H == 3 ){
+          key = 'SHIFT';
+        }
+      }else if( w0 * 2 <= x && x < w0 * 3 ){
+        if( H == 0 ){
+          key = '3';
+        }else if( H == 1 ){
+          key = 'W';
+        }else if( H == 2 ){
+          key = 'S';
+        }else if( H == 3 ){
+          key = 'Z';
+        }
+      }else if( w0 * 3 <= x && x < w0 * 4 ){
+        if( H == 0 ){
+          key = '4';
+        }else if( H == 1 ){
+          key = 'E';
+        }else if( H == 2 ){
+          key = 'D';
+        }else if( H == 3 ){
+          key = 'X';
+        }
+      }else if( w0 * 4 <= x && x < w0 * 5 ){
+        if( H == 0 ){
+          key = '5';
+        }else if( H == 1 ){
+          key = 'R';
+        }else if( H == 2 ){
+          key = 'F';
+        }else if( H == 3 ){
+          key = 'C';
+        }
+      }else if( w0 * 5 <= x && x < w0 * 6 ){
+        if( H == 0 ){
+          key = '6';
+        }else if( H == 1 ){
+          key = 'T';
+        }else if( H == 2 ){
+          key = 'G';
+        }else if( H == 3 ){
+          key = 'V';
+        }
+      }else if( w0 * 6 <= x && x < w0 * 7 ){
+        if( H == 0 ){
+          key = '7';
+        }else if( H == 1 ){
+          key = 'Y';
+        }else if( H == 2 ){
+          key = 'H';
+        }else if( H == 3 ){
+          key = 'B';
+        }
+      }else if( w0 * 7 <= x && x < w0 * 8 ){
+        if( H == 0 ){
+          key = '8';
+        }else if( H == 1 ){
+          key = 'U';
+        }else if( H == 2 ){
+          key = 'J';
+        }else if( H == 3 ){
+          key = 'N';
+        }
+      }else if( w0 * 8 <= x && x < w0 * 9 ){
+        if( H == 0 ){
+          key = '9';
+        }else if( H == 1 ){
+          key = 'I';
+        }else if( H == 2 ){
+          key = 'K';
+        }else if( H == 3 ){
+          key = 'M';
+        }
+      }else if( w0 * 9 <= x && x < w0 * 10 ){
+        if( H == 0 ){
+          key = '0';
+        }else if( H == 1 ){
+          key = 'O';
+        }else if( H == 2 ){
+          key = 'L';
+        }else if( H == 3 ){
+          key = ',';
+        }
+      }else if( w0 * 10 <= x && x < w0 * 11 ){
+        if( H == 0 ){
+          key = '-';
+        }else if( H == 1 ){
+          key = 'P';
+        }else if( H == 2 ){
+          key = ';';
+        }else if( H == 3 ){
+          key = '.';
+        }
+      }else if( w0 * 11 <= x && x < w0 * 12 ){
+        if( H == 0 ){
+          key = '^';
+        }else if( H == 1 ){
+          key = '@';
+        }else if( H == 2 ){
+          key = ':';
+        }else if( H == 3 ){
+          key = '/';
+        }
+      }else if( w0 * 12 <= x && x < w0 * 13 ){
+        if( H == 0 ){
+          key = '¥';
+        }else if( H == 1 ){
+          key = '[';
+        }else if( H == 2 ){
+          key = ']';
+        }else if( H == 3 ){
+          key = '_';
+        }
+      }else if( w0 * 13 <= x && x < w0 * 14 ){
+        if( H == 0 ){
+          key = 'BS';
+        }else if( H == 1 ){
+          key = 'ENTER';
+        }else if( H == 2 ){
+          key = 'ENTER';
+        }else if( H == 3 ){
+          key = 'SHIFT';
+        }
+      }else{
+        if( H == 3 ){
+          key = 'SHIFT';
+        }
+      }
+    }
+  }else{
+    //. 縦向き
+    var W = -1;
+    var w0 = w / 5;
+    if( 0 <= x && x < w0 ){
+      W = 0;
+    }else if( w0 <= x && x < w0 * 2 ){
+      W = 1;
+    }else if( w0 * 2 <= x && x < w0 * 3 ){
+      W = 2;
+    }else if( w0 * 3 <= x && x < w0 * 4 ){
+      W = 3;
+    }else{
+      W = 4;
+    }
+
+    var h0 = h / ( W == 3 ? 15 : ( W == 4 ? 1 : 14 ) );
+    if( W == 0 ){
+      key = ' ';
+    }else{
+      if( 0 <= y && y < h0 ){
+        if( H == 4 ){
+          key = '1';
+        }else if( H == 3 ){
+          key = 'TAB';
+        }else if( H == 2 ){
+          key = 'CTL';
+        }else if( H == 1 ){
+          key = 'SHIFT';
+        }
+      }else if( h0 <= y && y < h0 * 2 ){
+        if( H == 4 ){
+          key = '2';
+        }else if( H == 3 ){
+          key = 'Q';
+        }else if( H == 2 ){
+          key = 'A';
+        }else if( H == 1 ){
+          key = 'SHIFT';
+        }
+      }else if( h0 * 2 <= y && y < h0 * 3 ){
+        if( H == 4 ){
+          key = '3';
+        }else if( H == 3 ){
+          key = 'W';
+        }else if( H == 2 ){
+          key = 'S';
+        }else if( H == 1 ){
+          key = 'Z';
+        }
+      }else if( h0 * 3 <= y && y < h0 * 4 ){
+        if( H == 4 ){
+          key = '4';
+        }else if( H == 3 ){
+          key = 'E';
+        }else if( H == 2 ){
+          key = 'D';
+        }else if( H == 1 ){
+          key = 'X';
+        }
+      }else if( h0 * 4 <= y && y < h0 * 5 ){
+        if( H == 4 ){
+          key = '5';
+        }else if( H == 3 ){
+          key = 'R';
+        }else if( H == 2 ){
+          key = 'F';
+        }else if( H == 1 ){
+          key = 'C';
+        }
+      }else if( h0 * 5 <= y && y < h0 * 6 ){
+        if( H == 4 ){
+          key = '6';
+        }else if( H == 3 ){
+          key = 'T';
+        }else if( H == 2 ){
+          key = 'G';
+        }else if( H == 1 ){
+          key = 'V';
+        }
+      }else if( h0 * 6 <= y && y < h0 * 7 ){
+        if( H == 4 ){
+          key = '7';
+        }else if( H == 3 ){
+          key = 'Y';
+        }else if( H == 2 ){
+          key = 'H';
+        }else if( H == 1 ){
+          key = 'B';
+        }
+      }else if( h0 * 7 <= y && y < h0 * 8 ){
+        if( H == 4 ){
+          key = '8';
+        }else if( H == 3 ){
+          key = 'U';
+        }else if( H == 2 ){
+          key = 'J';
+        }else if( H == 1 ){
+          key = 'N';
+        }
+      }else if( h0 * 8 <= y && y < h0 * 9 ){
+        if( H == 4 ){
+          key = '9';
+        }else if( H == 3 ){
+          key = 'I';
+        }else if( H == 2 ){
+          key = 'K';
+        }else if( H == 1 ){
+          key = 'M';
+        }
+      }else if( h0 * 9 <= y && y < h0 * 10 ){
+        if( H == 4 ){
+          key = '0';
+        }else if( H == 3 ){
+          key = 'O';
+        }else if( H == 2 ){
+          key = 'L';
+        }else if( H == 1 ){
+          key = ',';
+        }
+      }else if( h0 * 10 <= y && y < h0 * 11 ){
+        if( H == 4 ){
+          key = '-';
+        }else if( H == 3 ){
+          key = 'P';
+        }else if( H == 2 ){
+          key = ';';
+        }else if( H == 1 ){
+          key = '.';
+        }
+      }else if( h0 * 11 <= y && y < h0 * 12 ){
+        if( H == 4 ){
+          key = '^';
+        }else if( H == 3 ){
+          key = '@';
+        }else if( H == 2 ){
+          key = ':';
+        }else if( H == 1 ){
+          key = '/';
+        }
+      }else if( h0 * 12 <= y && y < h0 * 13 ){
+        if( H == 4 ){
+          key = '¥';
+        }else if( H == 3 ){
+          key = '[';
+        }else if( H == 2 ){
+          key = ']';
+        }else if( H == 1 ){
+          key = '_';
+        }
+      }else if( h0 * 13 <= y && y < h0 * 14 ){
+        if( H == 4 ){
+          key = 'BS';
+        }else if( H == 3 ){
+          key = 'ENTER';
+        }else if( H == 2 ){
+          key = 'ENTER';
+        }else if( H == 1 ){
+          key = 'SHIFT';
+        }
+      }else{
+        if( H == 1 ){
+          key = 'SHIFT';
+        }
+      }
+    }
+  }
+
+  return key;
+}
+
+function publishMessage( letter ){
+  if( deviceid != null ){
+    phoneData.letter = letter;
+    phoneData.publish();
+  }
+}
+
+
+function onConnect() {
+  console.log("Connected");
+}
+function onConnectFailure(error) {
+  console.log("Connect Failed");
+  console.log(error.errorCode);
+  console.log(error.errorMessage);
+}
+function onConnectionLost(response) {
+  console.log("onConnectionLost")
+  if (response.errorCode !== 0) {
+    console.log("onConnectionLost:"+response.errorMessage);
+  }
+  client.connect({onSuccess: onConnect, onFailure: onConnectFailure});
+}
+
+
+phoneData.toJson = function(){
+  return JSON.stringify( this );
+}
+
+phoneData.publish = function(){
+  var message = new Messaging.Message( phoneData.toJson() );
+  message.destinationName = pubTopic;
+  client.send( message );
+}
+</script>
+</body>
+</html>
